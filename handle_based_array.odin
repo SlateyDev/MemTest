@@ -28,7 +28,6 @@ Handle_Array :: struct($T: typeid, $HT: typeid) {
 ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	delete(handle_array.items, loc)
 	delete(handle_array.unused_items, loc)
-	delete(handle_array.new_items)
 	mem.dynamic_arena_destroy(&handle_array.new_items_arena)
 
 	//Clear these out so the memory spaces are recreated if there is an attempt to add items again
