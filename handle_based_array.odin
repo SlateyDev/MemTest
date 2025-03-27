@@ -1,5 +1,6 @@
 package app
 
+import "core:testing"
 import "core:fmt"
 import "core:mem"
 
@@ -24,15 +25,24 @@ Handle_Array :: struct($T: typeid, $HT: typeid) {
 	new_items_arena: mem.Dynamic_Arena,
 }
 
-ha_delete :: proc(handle_array: Handle_Array($T, $HT), loc := #caller_location) {
+ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	delete(handle_array.items, loc)
 	delete(handle_array.unused_items, loc)
+	delete(handle_array.new_items)
+	mem.dynamic_arena_destroy(&handle_array.new_items_arena)
+
+	//Clear these out so the memory spaces are recreated if there is an attempt to add items again
+	handle_array.items = nil
+	handle_array.unused_items = nil
+	handle_array.new_items = nil
+	handle_array.new_items_arena.alignment = 0
 }
 
 ha_clear :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	clear(&handle_array.items)
 	clear(&handle_array.unused_items)
 	clear(&handle_array.new_items)
+	mem.dynamic_arena_reset(&handle_array.new_items_arena)
 }
 
 // Call this at a safe space when there are no pointers in flight. It will move things from
@@ -238,7 +248,8 @@ ha_iter_ptr :: proc(it: ^Handle_Array_Iter($T, $HT)) -> (val: ^T, handle: HT, co
 }
 
 // Test handle array and basic usage documentation.
-ha_test :: proc() {
+@(test)
+ha_test :: proc(t: ^testing.T) {
 	Ha_Test_Entity :: struct {
 		handle: Ha_Test_Entity_Handle,
 		pos: [2]f32,
@@ -297,5 +308,5 @@ ha_test :: proc() {
 	h5 := ha_add(&ha, Ha_Test_Entity {pos = {6, 2}})
 	assert(h5.idx == 4)
 
-	ha_delete(ha)
+	ha_delete(&ha)
 }

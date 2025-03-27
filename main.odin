@@ -72,8 +72,6 @@ run_mem_test :: proc() {
 	h5 := ha_add(&ha, My_Struct {position = {60, 60, 60}})
 	assert(h5.idx == 4)
 
-	ha_delete(ha)
-
     for _ in 0..<100 {
         for _ in 0..<1000 {
             _ = ha_add(&ha, My_Struct {position = {5,5,5}})
@@ -81,8 +79,15 @@ run_mem_test :: proc() {
         ha_commit_new(&ha)
     }
 
+	fmt.println("Allocation completed")
     _ = libc.getchar()
 
-    mem.dynamic_arena_destroy(&ha.new_items_arena)
-    delete(ha.items)
+	ha_delete(&ha)
+
+	fmt.println("Delete completed")
+    _ = libc.getchar()
+
+	h10 := ha_add(&ha, My_Struct {position = {10, 10, 10}, rotation = 0, scale = {1, 1, 1}})
+    assert(h10.idx == 1)
+	ha_delete(&ha)
 }
