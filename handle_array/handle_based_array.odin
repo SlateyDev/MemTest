@@ -1,10 +1,7 @@
-package app
+package handle_array
 
 import "core:testing"
-import "core:fmt"
 import "core:mem"
-
-_ :: fmt
 
 Handle :: struct {
 	idx: u32,
@@ -13,19 +10,19 @@ Handle :: struct {
 
 HANDLE_NONE :: Handle {}
 
-Handle_Array :: struct($T: typeid, $HT: typeid) {
+Array :: struct($T: typeid, $HT: typeid) {
 	items: [dynamic]T,
 	unused_items: [dynamic]u32,
 	allocator: mem.Allocator,
 
 	// To make sure we do not invalidate `items` in the middle of a frame, while there are pointers
 	// to things it, we add new items to this, and the new items are allocated using the growing
-	// virtual arena `new_items_arena`. Run `ha_commit_new` once in a while to move things from
+	// virtual arena `new_items_arena`. Run `array_commit_new` once in a while to move things from
 	new_items: [dynamic]^T,
 	new_items_arena: WrappedArena,
 }
 
-ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
+array_delete :: proc(handle_array: ^Array($T, $HT), loc := #caller_location) {
 	delete(handle_array.items, loc)
 	delete(handle_array.unused_items, loc)
 	wrapped_arena_destroy(&handle_array.new_items_arena)
@@ -36,7 +33,7 @@ ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location)
 	handle_array.new_items = nil
 }
 
-ha_clear :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
+array_clear :: proc(handle_array: ^Array($T, $HT), loc := #caller_location) {
 	clear(&handle_array.items)
 	clear(&handle_array.unused_items)
 	clear(&handle_array.new_items)
@@ -46,7 +43,7 @@ ha_clear :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) 
 // Call this at a safe space when there are no pointers in flight. It will move things from
 // new_items into items, potentially making it grow. Those new items live on a growing virtual
 // memory arena until this is called.
-ha_commit_new :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
+array_commit_new :: proc(handle_array: ^Array($T, $HT), loc := #caller_location) {
 	if len(handle_array.items) == 0 {
 		// Dummy item at idx zero
 		append(&handle_array.items, T{})
@@ -71,19 +68,19 @@ ha_commit_new :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_locat
 		append(&handle_array.items, new_item^)
 	}
 
-	wrapped_arena_free_all(&ha.new_items_arena)
+	wrapped_arena_free_all(&handle_array.new_items_arena)
 	handle_array.new_items = {}
 }
 
-ha_clone :: proc(handle_array: Handle_Array($T, $HT), allocator := context.allocator, loc := #caller_location) -> Handle_Array(T, HT) {
-	return Handle_Array(T, HT) {
+array_clone :: proc(handle_array: Array($T, $HT), allocator := context.allocator, loc := #caller_location) -> Array(T, HT) {
+	return Array(T, HT) {
 		items = slice.clone_to_dynamic(handle_array.items[:], allocator, loc),
 		unused_items = slice.clone_to_dynamic(handle_array.unused_items[:], allocator, loc),
 		allocator = allocator,
 	}
 }
 
-ha_add :: proc(handle_array: ^Handle_Array($T, $HT), value: T, loc := #caller_location) -> HT {
+array_add :: proc(handle_array: ^Array($T, $HT), value: T, loc := #caller_location) -> HT {
 	if handle_array.items == nil {
 		if handle_array.allocator == {} {
 			handle_array.allocator = context.allocator
@@ -128,15 +125,15 @@ ha_add :: proc(handle_array: ^Handle_Array($T, $HT), value: T, loc := #caller_lo
 	return new_item.handle
 }
 
-ha_get :: proc(handle_array: Handle_Array($T, $HT), handle: HT) -> (T, bool) #optional_ok {
-	if ptr := ha_get_ptr(handle_array, handle); ptr != nil {
+array_get :: proc(handle_array: Array($T, $HT), handle: HT) -> (T, bool) #optional_ok {
+	if ptr := array_get_ptr(handle_array, handle); ptr != nil {
 		return ptr^, true
 	}
 
 	return {}, false
 }
 
-ha_get_ptr :: proc(handle_array: Handle_Array($T, $HT), handle: HT) -> ^T {
+array_get_ptr :: proc(handle_array: Array($T, $HT), handle: HT) -> ^T {
 	if handle.idx == 0 || handle.idx < 0 {
 		return nil
 	}
@@ -163,7 +160,7 @@ ha_get_ptr :: proc(handle_array: Handle_Array($T, $HT), handle: HT) -> ^T {
 	return nil
 }
 
-ha_remove :: proc(handle_array: ^Handle_Array($T, $HT), handle: HT) {
+array_remove :: proc(handle_array: ^Array($T, $HT), handle: HT) {
 	if handle.idx == 0 || handle.idx < 0 {
 		return
 	}
@@ -172,7 +169,7 @@ ha_remove :: proc(handle_array: ^Handle_Array($T, $HT), handle: HT) {
 		new_idx := handle.idx - u32(len(handle_array.items))
 		
 		if new_idx < u32(len(handle_array.new_items)) {
-			// This stops this item from being added during `ha_commit_new`
+			// This stops this item from being added during `array_commit_new`
 			handle_array.new_items[new_idx] = nil
 		}
 
@@ -187,23 +184,23 @@ ha_remove :: proc(handle_array: ^Handle_Array($T, $HT), handle: HT) {
 	}
 }
 
-ha_valid :: proc(handle_array: Handle_Array($T, $HT), handle: HT) -> bool {
-	return ha_get_ptr(handle_array, handle) != nil
+array_valid :: proc(handle_array: Array($T, $HT), handle: HT) -> bool {
+	return array_get_ptr(handle_array, handle) != nil
 }
 
-Handle_Array_Iter :: struct($T: typeid, $HT: typeid) {
-	handle_array: ^Handle_Array(T, HT),
+Array_Iter :: struct($T: typeid, $HT: typeid) {
+	handle_array: ^Array(T, HT),
 	index: int,
 }
 
-ha_make_iter :: proc(handle_array: ^Handle_Array($T, $HT)) -> Handle_Array_Iter(T, HT) {
+array_make_iter :: proc(handle_array: ^Array($T, $HT)) -> Array_Iter(T, HT) {
 	return { handle_array = handle_array }
 }
 
-ha_iter :: proc(it: ^Handle_Array_Iter($T, $HT)) -> (val: T, handle: HT, cond: bool) {
+array_iter :: proc(it: ^Array_Iter($T, $HT)) -> (val: T, handle: HT, cond: bool) {
 	val_ptr: ^T
 
-	val_ptr, handle, cond = ha_iter_ptr(it)
+	val_ptr, handle, cond = array_iter_ptr(it)
 
 	if val_ptr != nil {
 		val = val_ptr^
@@ -212,7 +209,7 @@ ha_iter :: proc(it: ^Handle_Array_Iter($T, $HT)) -> (val: T, handle: HT, cond: b
 	return
 }
 
-ha_iter_ptr :: proc(it: ^Handle_Array_Iter($T, $HT)) -> (val: ^T, handle: HT, cond: bool) {
+array_iter_ptr :: proc(it: ^Array_Iter($T, $HT)) -> (val: ^T, handle: HT, cond: bool) {
 	cond = it.index < len(it.handle_array.items) + len(it.handle_array.new_items)
 
 	for ; cond; cond = it.index < len(it.handle_array.items) + len(it.handle_array.new_items) {
@@ -247,25 +244,25 @@ ha_iter_ptr :: proc(it: ^Handle_Array_Iter($T, $HT)) -> (val: ^T, handle: HT, co
 
 // Test handle array and basic usage documentation.
 @(test)
-ha_test :: proc(t: ^testing.T) {
-	Ha_Test_Entity :: struct {
-		handle: Ha_Test_Entity_Handle,
+array_test :: proc(t: ^testing.T) {
+	Test_Entity :: struct {
+		handle: Test_Entity_Handle,
 		pos: [2]f32,
 		vel: [2]f32,
 	}
 
-	Ha_Test_Entity_Handle :: distinct Handle
+	Test_Entity_Handle :: distinct Handle
 
-	ha: Handle_Array(Ha_Test_Entity, Ha_Test_Entity_Handle)
+	test_array: Array(Test_Entity, Test_Entity_Handle)
 
-	h1 := ha_add(&ha, Ha_Test_Entity {pos = {1, 2}})
-	h2 := ha_add(&ha, Ha_Test_Entity {pos = {2, 2}})
-	h3 := ha_add(&ha, Ha_Test_Entity {pos = {3, 2}})
+	h1 := array_add(&test_array, Test_Entity {pos = {1, 2}})
+	h2 := array_add(&test_array, Test_Entity {pos = {2, 2}})
+	h3 := array_add(&test_array, Test_Entity {pos = {3, 2}})
 
-	ha_remove(&ha, h2)
+	array_remove(&test_array, h2)
 
 	// This one will reuse the slot h2 had
-	h4 := ha_add(&ha, Ha_Test_Entity {pos = {4, 2}})
+	h4 := array_add(&test_array, Test_Entity {pos = {4, 2}})
 	assert(h4.idx == 4)
 
 	assert(h1.idx == 1)
@@ -275,18 +272,18 @@ ha_test :: proc(t: ^testing.T) {
 	assert(h2.gen == 1)
 	assert(h3.gen == 1)
 
-	if _, ok := ha_get(ha, h2); ok {
+	if _, ok := array_get(test_array, h2); ok {
 		panic("h2 should not be valid")
 	}
 
-	if h4_ptr := ha_get_ptr(ha, h4); h4_ptr != nil {
+	if h4_ptr := array_get_ptr(test_array, h4); h4_ptr != nil {
 		assert(h4_ptr.pos == {4, 2})
 		h4_ptr.pos = {5, 2}
 	} else {
 		panic("h4 should be valid")
 	}
 
-	if h4_val, ok := ha_get(ha, h4); ok {
+	if h4_val, ok := array_get(test_array, h4); ok {
 		assert(h4_val.pos == {5, 2})
 	} else {
 		panic("h4 should be valid")
@@ -294,17 +291,17 @@ ha_test :: proc(t: ^testing.T) {
 
 	// This call moves new items from new_items into items. Needs to be run for example at
 	// end of frame in a game.
-	ha_commit_new(&ha)
+	array_commit_new(&test_array)
 
-	if h4_val, ok := ha_get(ha, h4); ok {
+	if h4_val, ok := array_get(test_array, h4); ok {
 		assert(h4_val.pos == {5, 2})
 	} else {
 		panic("h4 should be valid")
 	}
 
-	ha_remove(&ha, h4)
-	h5 := ha_add(&ha, Ha_Test_Entity {pos = {6, 2}})
+	array_remove(&test_array, h4)
+	h5 := array_add(&test_array, Test_Entity {pos = {6, 2}})
 	assert(h5.idx == 4)
 
-	ha_delete(&ha)
+	array_delete(&test_array)
 }

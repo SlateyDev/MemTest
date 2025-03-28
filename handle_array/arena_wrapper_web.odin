@@ -1,6 +1,6 @@
 #+build wasm32, wasm64p32
 
-package app
+package handle_array
 
 import "core:mem"
 
