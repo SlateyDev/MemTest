@@ -28,7 +28,7 @@ Handle_Array :: struct($T: typeid, $HT: typeid) {
 ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	delete(handle_array.items, loc)
 	delete(handle_array.unused_items, loc)
-	destroy_arena(&handle_array.new_items_arena)
+	wrapped_arena_destroy(&handle_array.new_items_arena)
 
 	//Clear these out so the memory spaces are recreated if there is an attempt to add items again
 	handle_array.items = nil
@@ -40,7 +40,7 @@ ha_clear :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) 
 	clear(&handle_array.items)
 	clear(&handle_array.unused_items)
 	clear(&handle_array.new_items)
-	reset_arena(&handle_array.new_items_arena)
+	wrapped_arena_reset(&handle_array.new_items_arena)
 }
 
 // Call this at a safe space when there are no pointers in flight. It will move things from
@@ -71,7 +71,7 @@ ha_commit_new :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_locat
 		append(&handle_array.items, new_item^)
 	}
 
-	arena_free_all(&ha.new_items_arena)
+	wrapped_arena_free_all(&ha.new_items_arena)
 	handle_array.new_items = {}
 }
 
@@ -110,11 +110,11 @@ ha_add :: proc(handle_array: ^Handle_Array($T, $HT), value: T, loc := #caller_lo
 		append(&handle_array.items, T{})
 	}
 
-    if !arena_is_configured(&handle_array.new_items_arena) {
-        arena_init(&handle_array.new_items_arena)
+    if !wrapped_arena_is_configured(&handle_array.new_items_arena) {
+        wrapped_arena_init(&handle_array.new_items_arena)
     }
 
-	new_items_allocator := arena_allocator(&handle_array.new_items_arena)
+	new_items_allocator := wrapped_arena_allocator(&handle_array.new_items_arena)
 	new_item := new(T, new_items_allocator)
 	new_item^ = value
 	new_item.handle.idx = u32(len(handle_array.items) + len(handle_array.new_items))
