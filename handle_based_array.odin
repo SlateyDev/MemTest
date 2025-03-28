@@ -22,26 +22,25 @@ Handle_Array :: struct($T: typeid, $HT: typeid) {
 	// to things it, we add new items to this, and the new items are allocated using the growing
 	// virtual arena `new_items_arena`. Run `ha_commit_new` once in a while to move things from
 	new_items: [dynamic]^T,
-	new_items_arena: mem.Dynamic_Arena,
+	new_items_arena: WrappedArena,
 }
 
 ha_delete :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	delete(handle_array.items, loc)
 	delete(handle_array.unused_items, loc)
-	mem.dynamic_arena_destroy(&handle_array.new_items_arena)
+	destroy_arena(&handle_array.new_items_arena)
 
 	//Clear these out so the memory spaces are recreated if there is an attempt to add items again
 	handle_array.items = nil
 	handle_array.unused_items = nil
 	handle_array.new_items = nil
-	handle_array.new_items_arena.alignment = 0
 }
 
 ha_clear :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_location) {
 	clear(&handle_array.items)
 	clear(&handle_array.unused_items)
 	clear(&handle_array.new_items)
-	mem.dynamic_arena_reset(&handle_array.new_items_arena)
+	reset_arena(&handle_array.new_items_arena)
 }
 
 // Call this at a safe space when there are no pointers in flight. It will move things from
@@ -72,7 +71,7 @@ ha_commit_new :: proc(handle_array: ^Handle_Array($T, $HT), loc := #caller_locat
 		append(&handle_array.items, new_item^)
 	}
 
-	mem.dynamic_arena_free_all(&ha.new_items_arena)
+	arena_free_all(&ha.new_items_arena)
 	handle_array.new_items = {}
 }
 
@@ -111,11 +110,11 @@ ha_add :: proc(handle_array: ^Handle_Array($T, $HT), value: T, loc := #caller_lo
 		append(&handle_array.items, T{})
 	}
 
-    if handle_array.new_items_arena.alignment == 0 {
-        mem.dynamic_arena_init(&handle_array.new_items_arena)
+    if !arena_is_configured(&handle_array.new_items_arena) {
+        arena_init(&handle_array.new_items_arena)
     }
 
-	new_items_allocator := mem.dynamic_arena_allocator(&handle_array.new_items_arena)
+	new_items_allocator := arena_allocator(&handle_array.new_items_arena)
 	new_item := new(T, new_items_allocator)
 	new_item^ = value
 	new_item.handle.idx = u32(len(handle_array.items) + len(handle_array.new_items))
