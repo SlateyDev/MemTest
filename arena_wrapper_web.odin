@@ -11,12 +11,12 @@ destroy_arena :: proc(arena: ^mem.Dynamic_Arena) {
     arena.alignment = 0
 }
 
-reset_arena :: proc(arena: ^mem.Dynamic_Arena) {
-    mem.dynamic_arena_reset(arena)
+reset_arena :: proc(arena: ^mem.Dynamic_Arena, loc := #caller_location) {
+    mem.dynamic_arena_reset(arena, loc)
 }
 
-arena_free_all :: proc(arena: ^mem.Dynamic_Arena) {
-    mem.dynamic_arena_free_all(arena)
+arena_free_all :: proc(arena: ^mem.Dynamic_Arena, loc := #caller_location) {
+    mem.dynamic_arena_free_all(arena, loc)
 }
 
 arena_is_configured :: proc(arena: ^mem.Dynamic_Arena) -> bool {
